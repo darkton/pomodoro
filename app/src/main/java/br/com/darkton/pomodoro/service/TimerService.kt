@@ -3,6 +3,9 @@ package br.com.darkton.pomodoro.service
 import android.app.*
 import android.content.Context
 import android.content.Intent
+import android.media.AudioAttributes
+import android.media.Ringtone
+import android.media.RingtoneManager
 import android.os.*
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.LifecycleService
@@ -18,8 +21,11 @@ class TimerService : LifecycleService() {
 
     private lateinit var dataStore: PomodoroDataStore
     private var timerJob: Job? = null
+    private var currentRingtone: Ringtone? = null
     private val CHANNEL_ID = "PomodoroTimerChannel"
     private val NOTIFICATION_ID = 1
+    private val handler = Handler(Looper.getMainLooper())
+    private var stopAlarmRunnable: Runnable? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -29,6 +35,7 @@ class TimerService : LifecycleService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
+        stopAlarm() 
         val action = intent?.action
         when (action) {
             ACTION_START -> startTimer()
@@ -43,45 +50,43 @@ class TimerService : LifecycleService() {
         timerJob = lifecycleScope.launch {
             val prefs = dataStore.preferencesFlow.first()
             
-            if (prefs.currentState == PomodoroState.PAUSED) {
-                val endTime = System.currentTimeMillis() + prefs.remainingMillis
-                val originalState = if (prefs.currentRound % 2 != 0) PomodoroState.FOCUS else PomodoroState.BREAK // Simple logic, might need adjustment based on how rounds are tracked
-                // Better: we should have saved the state it was in before pausing. 
-                // Let's assume for now it stays in FOCUS or BREAK but we need a way to know.
-                // Actually, if we just set it back to what it was.
-                // For now, let's assume it was FOCUS if round is odd, BREAK if even is not robust.
-                // Let's look at PomodoroState. 
+            val (nextState, endTime) = when {
+                prefs.currentState == PomodoroState.IDLE || prefs.currentState == PomodoroState.COMPLETED -> {
+                    val duration = prefs.focusMinutes.toLong() * 60 * 1000
+                    PomodoroState.FOCUS to (System.currentTimeMillis() + duration)
+                }
+                prefs.currentState == PomodoroState.PAUSED -> {
+                    PomodoroState.FOCUS to (System.currentTimeMillis() + prefs.remainingMillis)
+                }
+                prefs.timerEndTimestamp == null -> {
+                    val duration = if (prefs.currentState == PomodoroState.BREAK) 
+                        prefs.breakMinutes.toLong() * 60 * 1000 
+                    else 
+                        prefs.focusMinutes.toLong() * 60 * 1000
+                    prefs.currentState to (System.currentTimeMillis() + duration)
+                }
+                else -> {
+                    prefs.currentState to (System.currentTimeMillis() + prefs.remainingMillis)
+                }
             }
 
-            // Refined Start/Resume logic
-            val currentState = prefs.currentState
-            if (currentState == PomodoroState.IDLE || currentState == PomodoroState.COMPLETED) {
-                val endTime = System.currentTimeMillis() + (prefs.focusMinutes * 60 * 1000)
-                dataStore.updateState(PomodoroState.FOCUS, 1, endTime)
-            } else if (currentState == PomodoroState.PAUSED) {
-                val endTime = System.currentTimeMillis() + prefs.remainingMillis
-                // We need to know if it was FOCUS or BREAK. 
-                // Let's assume we store the 'pre-pause' state or just deduce it.
-                // If it's PAUSED, we don't know if it was FOCUS or BREAK.
-                // I should have added a 'previousState' or just not change state to PAUSED but use a boolean 'isPaused'.
-                // But let's use the round: if it's currently focused on a round.
-                // Actually, let's just use FOCUS for now or improve DataStore.
-                dataStore.updateState(PomodoroState.FOCUS, prefs.currentRound, endTime)
-            }
+            dataStore.updateState(nextState, prefs.currentRound, endTime)
             
             startForeground(NOTIFICATION_ID, createNotification("Timer running"))
             
             while (isActive) {
                 val currentPrefs = dataStore.preferencesFlow.first()
-                if (currentPrefs.currentState == PomodoroState.PAUSED) break
+                if (currentPrefs.currentState == PomodoroState.PAUSED || currentPrefs.currentState == PomodoroState.IDLE) break
                 
-                val endTime = currentPrefs.timerEndTimestamp ?: break
-                val remaining = endTime - System.currentTimeMillis()
+                val currentEndTime = currentPrefs.timerEndTimestamp ?: break
+                val remaining = currentEndTime - System.currentTimeMillis()
 
                 if (remaining <= 0) {
                     handleTransition(currentPrefs)
+                    break 
                 } else {
                     updateNotification(remaining)
+                    dataStore.updateRemaining(remaining)
                 }
                 delay(1000)
             }
@@ -94,7 +99,7 @@ class TimerService : LifecycleService() {
             val prefs = dataStore.preferencesFlow.first()
             if (prefs.currentState == PomodoroState.FOCUS || prefs.currentState == PomodoroState.BREAK) {
                 val remaining = (prefs.timerEndTimestamp ?: System.currentTimeMillis()) - System.currentTimeMillis()
-                dataStore.updateState(PomodoroState.PAUSED, prefs.currentRound, null, remaining)
+                dataStore.updateState(PomodoroState.PAUSED, prefs.currentRound, null, maxOf(0, remaining))
                 updateNotification(remaining)
             }
         }
@@ -102,25 +107,101 @@ class TimerService : LifecycleService() {
 
     private suspend fun handleTransition(prefs: br.com.darkton.pomodoro.data.PomodoroPreferences) {
         val vibrator = getSystemService(VIBRATOR_SERVICE) as Vibrator
-        when (prefs.currentState) {
-            PomodoroState.FOCUS -> {
-                if (prefs.currentRound < prefs.totalRounds) {
-                    vibrate(vibrator, VibrationEffect.createOneShot(600, VibrationEffect.DEFAULT_AMPLITUDE))
-                    val nextEndTime = System.currentTimeMillis() + (prefs.breakMinutes * 60 * 1000)
-                    dataStore.updateState(PomodoroState.BREAK, prefs.currentRound, nextEndTime)
-                } else {
-                    vibrate(vibrator, VibrationEffect.createWaveform(longArrayOf(0, 600, 200, 200, 200, 200), -1))
-                    dataStore.updateState(PomodoroState.COMPLETED, prefs.currentRound, null)
-                    stopTimer()
-                }
-            }
-            PomodoroState.BREAK -> {
-                vibrate(vibrator, VibrationEffect.createWaveform(longArrayOf(0, 200, 200, 200), -1))
-                val nextEndTime = System.currentTimeMillis() + (prefs.focusMinutes * 60 * 1000)
-                dataStore.updateState(PomodoroState.FOCUS, prefs.currentRound + 1, nextEndTime)
-            }
-            else -> stopTimer()
+        
+        val urgencyPattern = longArrayOf(0, 500, 200, 500, 200, 500, 200, 500)
+        vibrate(vibrator, VibrationEffect.createWaveform(urgencyPattern, -1))
+        
+        playAlarm()
+        
+        val nextRemaining = if (prefs.currentState == PomodoroState.FOCUS) 
+            prefs.breakMinutes.toLong() * 60 * 1000 
+        else 
+            prefs.focusMinutes.toLong() * 60 * 1000
+            
+        val nextRound = if (prefs.currentState == PomodoroState.BREAK) prefs.currentRound + 1 else prefs.currentRound
+        
+        if (prefs.currentState == PomodoroState.BREAK && prefs.currentRound >= prefs.totalRounds) {
+            dataStore.updateState(PomodoroState.COMPLETED, prefs.currentRound, null)
+            showCompletionNotification()
+            stopTimer()
+        } else {
+            dataStore.updateState(
+                state = PomodoroState.PAUSED,
+                round = nextRound,
+                endTimestamp = null,
+                remaining = nextRemaining
+            )
+            showAlarmNotification()
         }
+    }
+
+    private fun playAlarm() {
+        stopAlarm()
+        try {
+            val alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+            currentRingtone = RingtoneManager.getRingtone(applicationContext, alarmUri)
+            currentRingtone?.audioAttributes = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ALARM)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build()
+            currentRingtone?.play()
+
+            // Auto-stop alarm after 30 seconds
+            stopAlarmRunnable = Runnable { stopAlarm() }
+            stopAlarmRunnable?.let { handler.postDelayed(it, 30000) }
+            
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun stopAlarm() {
+        currentRingtone?.stop()
+        currentRingtone = null
+        stopAlarmRunnable?.let { handler.removeCallbacks(it) }
+        stopAlarmRunnable = null
+        val vibrator = getSystemService(VIBRATOR_SERVICE) as Vibrator
+        vibrator.cancel()
+    }
+
+    private fun showAlarmNotification() {
+        val notificationIntent = Intent(this, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0, notificationIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("Pomodoro Finished!")
+            .setContentText("Tap to start next phase")
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setFullScreenIntent(pendingIntent, true)
+            .setAutoCancel(true)
+            .build()
+
+        val manager = getSystemService(NotificationManager::class.java)
+        manager.notify(NOTIFICATION_ID, notification)
+        
+        try {
+            startActivity(notificationIntent)
+        } catch (e: Exception) {
+            // Activity start might be blocked by OS, fullScreenIntent handles it
+        }
+    }
+
+    private fun showCompletionNotification() {
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("Pomodoro Completed!")
+            .setContentText("All rounds finished.")
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .build()
+        val manager = getSystemService(NotificationManager::class.java)
+        manager.notify(2, notification)
     }
 
     private fun vibrate(vibrator: Vibrator, effect: VibrationEffect) {
@@ -128,12 +209,13 @@ class TimerService : LifecycleService() {
             vibrator.vibrate(effect)
         } else {
             @Suppress("DEPRECATION")
-            vibrator.vibrate(500)
+            vibrator.vibrate(1000)
         }
     }
 
     private fun stopTimer() {
         timerJob?.cancel()
+        stopAlarm()
         stopForeground(true)
         stopSelf()
     }
@@ -143,8 +225,10 @@ class TimerService : LifecycleService() {
             val serviceChannel = NotificationChannel(
                 CHANNEL_ID,
                 "Pomodoro Timer Channel",
-                NotificationManager.IMPORTANCE_LOW
+                NotificationManager.IMPORTANCE_HIGH
             )
+            serviceChannel.enableVibration(true)
+            serviceChannel.setSound(null, null)
             val manager = getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(serviceChannel)
         }
@@ -163,17 +247,21 @@ class TimerService : LifecycleService() {
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
-            .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .build()
     }
 
     private fun updateNotification(remainingMs: Long) {
-        val minutes = (remainingMs / 1000) / 60
-        val seconds = (remainingMs / 1000) % 60
+        val minutes = maxOf(0, (remainingMs / 1000) / 60)
+        val seconds = maxOf(0, (remainingMs / 1000) % 60)
         val timeStr = String.format("%02d:%02d", minutes, seconds)
         val notification = createNotification("Remaining: $timeStr")
         val manager = getSystemService(NotificationManager::class.java)
         manager.notify(NOTIFICATION_ID, notification)
+    }
+
+    override fun onDestroy() {
+        stopAlarm()
+        super.onDestroy()
     }
 
     companion object {

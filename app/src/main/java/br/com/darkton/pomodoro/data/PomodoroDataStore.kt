@@ -34,7 +34,7 @@ class PomodoroDataStore(private val context: Context) {
 
     val preferencesFlow: Flow<PomodoroPreferences> = context.dataStore.data.map { preferences ->
         PomodoroPreferences(
-            focusMinutes = preferences[FOCUS_MINUTES] ?: 25,
+            focusMinutes = preferences[FOCUS_MINUTES] ?: 1,
             breakMinutes = preferences[BREAK_MINUTES] ?: 5,
             totalRounds = preferences[TOTAL_ROUNDS] ?: 4,
             currentRound = preferences[CURRENT_ROUND] ?: 1,
@@ -62,6 +62,12 @@ class PomodoroDataStore(private val context: Context) {
             } else {
                 preferences.remove(TIMER_END_TIMESTAMP)
             }
+        }
+    }
+
+    suspend fun updateRemaining(remaining: Long) {
+        context.dataStore.edit { preferences ->
+            preferences[REMAINING_MILLIS] = remaining
         }
     }
 
