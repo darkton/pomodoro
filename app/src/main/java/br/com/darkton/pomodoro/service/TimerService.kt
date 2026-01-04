@@ -72,7 +72,7 @@ class TimerService : LifecycleService() {
 
             dataStore.updateState(nextState, prefs.currentRound, endTime)
             
-            startForeground(NOTIFICATION_ID, createNotification("Timer running"))
+            startForeground(NOTIFICATION_ID, createNotification(getString(R.string.timer_running)))
             
             while (isActive) {
                 val currentPrefs = dataStore.preferencesFlow.first()
@@ -105,8 +105,18 @@ class TimerService : LifecycleService() {
         }
     }
 
+    private fun getVibrator(): Vibrator {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val vibratorManager = getSystemService(VibratorManager::class.java)
+            vibratorManager.defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            getSystemService(Vibrator::class.java)!!
+        }
+    }
+
     private suspend fun handleTransition(prefs: br.com.darkton.pomodoro.data.PomodoroPreferences) {
-        val vibrator = getSystemService(VIBRATOR_SERVICE) as Vibrator
+        val vibrator = getVibrator()
         
         val urgencyPattern = longArrayOf(0, 500, 200, 500, 200, 500, 200, 500)
         vibrate(vibrator, VibrationEffect.createWaveform(urgencyPattern, -1))
@@ -147,7 +157,6 @@ class TimerService : LifecycleService() {
                 .build()
             currentRingtone?.play()
 
-            // Auto-stop alarm after 30 seconds
             stopAlarmRunnable = Runnable { stopAlarm() }
             stopAlarmRunnable?.let { handler.postDelayed(it, 30000) }
             
@@ -161,7 +170,7 @@ class TimerService : LifecycleService() {
         currentRingtone = null
         stopAlarmRunnable?.let { handler.removeCallbacks(it) }
         stopAlarmRunnable = null
-        val vibrator = getSystemService(VIBRATOR_SERVICE) as Vibrator
+        val vibrator = getVibrator()
         vibrator.cancel()
     }
 
@@ -175,12 +184,13 @@ class TimerService : LifecycleService() {
         )
 
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Pomodoro Finished!")
-            .setContentText("Tap to start next phase")
+            .setContentTitle(getString(R.string.phase_complete_title))
+            .setContentText(getString(R.string.phase_complete_text))
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setFullScreenIntent(pendingIntent, true)
+            .addAction(0, getString(R.string.open_app), pendingIntent)
             .setAutoCancel(true)
             .build()
 
@@ -190,14 +200,14 @@ class TimerService : LifecycleService() {
         try {
             startActivity(notificationIntent)
         } catch (e: Exception) {
-            // Activity start might be blocked by OS, fullScreenIntent handles it
+            // OS might block direct start
         }
     }
 
     private fun showCompletionNotification() {
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Pomodoro Completed!")
-            .setContentText("All rounds finished.")
+            .setContentTitle(getString(R.string.pomodoro_completed_title))
+            .setContentText(getString(R.string.pomodoro_completed_text))
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .build()
         val manager = getSystemService(NotificationManager::class.java)
@@ -224,7 +234,7 @@ class TimerService : LifecycleService() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val serviceChannel = NotificationChannel(
                 CHANNEL_ID,
-                "Pomodoro Timer Channel",
+                getString(R.string.notification_channel_name),
                 NotificationManager.IMPORTANCE_HIGH
             )
             serviceChannel.enableVibration(true)
@@ -242,7 +252,7 @@ class TimerService : LifecycleService() {
         )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Pomodoro")
+            .setContentTitle(getString(R.string.app_name))
             .setContentText(contentText)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentIntent(pendingIntent)
@@ -254,7 +264,7 @@ class TimerService : LifecycleService() {
         val minutes = maxOf(0, (remainingMs / 1000) / 60)
         val seconds = maxOf(0, (remainingMs / 1000) % 60)
         val timeStr = String.format("%02d:%02d", minutes, seconds)
-        val notification = createNotification("Remaining: $timeStr")
+        val notification = createNotification(getString(R.string.remaining_time, timeStr))
         val manager = getSystemService(NotificationManager::class.java)
         manager.notify(NOTIFICATION_ID, notification)
     }

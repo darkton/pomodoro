@@ -1,0 +1,29 @@
+<resources>
+    <string name="app_name">Pomodoro</string>
+    <string name="tile_label">Pomodoro Tile</string>
+    <string name="complication_label">Pomodoro Complicação</string>
+    <string name="focus_label">Foco</string>
+    <string name="break_label">Pausa</string>
+    <string name="completed_label">Concluído</string>
+    <string name="start_timer">Iniciar</string>
+    <string name="pause_timer">Pausar</string>
+    <string name="reset_timer">Reiniciar</string>
+    <string name="stop_timer">Parar</string>
+    <string name="settings">Configurações</string>
+    <string name="paused_label">Pausado</string>
+    <string name="done_label">Pronto</string>
+    <string name="focus_time_label">Tempo de foco</string>
+    <string name="break_time_label">Tempo de pausa</string>
+    <string name="total_rounds_label">Total de sessões</string>
+    <string name="focus_description">Defina a duração das sessões de foco</string>
+    <string name="break_description">Defina a duração das pausas</string>
+    <string name="rounds_description">Defina o número de sessões</string>
+    <string name="timer_running">Cronômetro rodando</string>
+    <string name="notification_channel_name">Canal do Cronômetro Pomodoro</string>
+    <string name="phase_complete_title">Pomodoro Finalizado!</string>
+    <string name="phase_complete_text">Fase concluída</string>
+    <string name="open_app">Abrir App</string>
+    <string name="pomodoro_completed_title">Pomodoro Concluído!</string>
+    <string name="pomodoro_completed_text">Todas as sessões foram finalizadas.</string>
+    <string name="remaining_time">Restante: %s</string>
+</resources>

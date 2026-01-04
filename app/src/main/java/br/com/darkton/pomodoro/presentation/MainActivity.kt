@@ -113,16 +113,16 @@ fun PomodoroApp(viewModel: PomodoroViewModel) {
                         onSelectRounds = { navigationStack.add(AppScreen.PickerRounds) }
                     )
                     AppScreen.PickerFocus -> FullScreenPicker(
-                        label = "Focus time",
+                        label = stringResource(R.string.focus_time_label),
                         initialValue = state.focusMinutes,
-                        range = 5..90,
+                        range = 1..60,
                         onValueSelected = { value ->
                             viewModel.updateConfig(value, state.breakMinutes, state.totalRounds)
                             navigationStack.removeLast()
                         }
                     )
                     AppScreen.PickerBreak -> FullScreenPicker(
-                        label = "Break time",
+                        label = stringResource(R.string.break_time_label),
                         initialValue = state.breakMinutes,
                         range = 1..30,
                         onValueSelected = { value ->
@@ -131,7 +131,7 @@ fun PomodoroApp(viewModel: PomodoroViewModel) {
                         }
                     )
                     AppScreen.PickerRounds -> FullScreenPicker(
-                        label = "Total rounds",
+                        label = stringResource(R.string.total_rounds_label),
                         initialValue = state.totalRounds,
                         range = 1..12,
                         onValueSelected = { value ->
@@ -211,9 +211,9 @@ fun MainScreen(
                     text = when (state.currentState) {
                         PomodoroState.FOCUS -> stringResource(R.string.focus_label)
                         PomodoroState.BREAK -> stringResource(R.string.break_label)
-                        PomodoroState.PAUSED -> "Paused"
+                        PomodoroState.PAUSED -> stringResource(R.string.paused_label)
                         PomodoroState.COMPLETED -> stringResource(R.string.completed_label)
-                        else -> "Pomodoro"
+                        else -> stringResource(R.string.app_name)
                     },
                     color = statusColor,
                     style = MaterialTheme.typography.labelMedium,
@@ -271,7 +271,7 @@ fun MainScreen(
                             painter = painterResource(
                                 id = if (isRunning) R.drawable.pause_24px else R.drawable.play_arrow_24px
                             ),
-                            contentDescription = if (isRunning) "Pause" else "Start",
+                            contentDescription = if (isRunning) stringResource(R.string.pause_timer) else stringResource(R.string.start_timer),
                             modifier = Modifier.size(28.dp)
                         )
                     }
@@ -293,7 +293,7 @@ fun MainScreen(
                         ) {
                             Icon(
                                 painter = painterResource(id = R.drawable.settings_24px),
-                                contentDescription = "Settings",
+                                contentDescription = stringResource(R.string.settings),
                                 modifier = Modifier.size(28.dp)
                             )
                         }
@@ -313,7 +313,7 @@ fun MainScreen(
                         ) {
                             Icon(
                                 painter = painterResource(id = R.drawable.stop_24px),
-                                contentDescription = "Stop",
+                                contentDescription = stringResource(R.string.stop_timer),
                                 modifier = Modifier.size(28.dp)
                             )
                         }
@@ -339,7 +339,7 @@ fun SettingsMenu(
             EdgeButton(
                 onClick = onDismiss
             ) {
-                Text("Done")
+                Text(stringResource(R.string.done_label))
             }
         }
     ) {
@@ -351,7 +351,7 @@ fun SettingsMenu(
         ) {
             item {
                 Text(
-                    "Settings",
+                    stringResource(R.string.settings),
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
@@ -359,25 +359,25 @@ fun SettingsMenu(
             item {
                 TitleCard(
                     onClick = onSelectFocus,
-                    title = { Text("Focus time") }
+                    title = { Text(stringResource(R.string.focus_time_label)) }
                 ) {
-                    Text("Set duration for focus sessions")
+                    Text(stringResource(R.string.focus_description))
                 }
             }
             item {
                 TitleCard(
                     onClick = onSelectBreak,
-                    title = { Text("Text for breaks") }
+                    title = { Text(stringResource(R.string.break_time_label)) }
                 ) {
-                    Text("Set duration for breaks")
+                    Text(stringResource(R.string.break_description))
                 }
             }
             item {
                 TitleCard(
                     onClick = onSelectRounds,
-                    title = { Text("Total rounds") }
+                    title = { Text(stringResource(R.string.total_rounds_label)) }
                 ) {
-                    Text("Set number of sessions")
+                    Text(stringResource(R.string.rounds_description))
                 }
             }
         }
@@ -485,7 +485,7 @@ fun FullScreenPicker(
                     },
                     modifier = Modifier.align(Alignment.BottomCenter)
                 ) {
-                    Text("Done")
+                    Text(stringResource(R.string.done_label))
                 }
             }
         }
